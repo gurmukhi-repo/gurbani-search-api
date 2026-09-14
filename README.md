@@ -6,7 +6,7 @@ with its translations, and finds **related shabads**.
 
 It calls no AI service at runtime and needs no credentials. Embedding happened
 once, offline; the service ships frozen vectors and does arithmetic. It runs in
-**149 MB of RAM** on the cheapest VPS you can rent, behind a firewall, or on a
+**114 MB of RAM** on the cheapest VPS you can rent, behind a firewall, or on a
 plane.
 
 > **Code is MIT. The data is not.** The scripture, translations and indexes come
@@ -49,6 +49,14 @@ curl "http://localhost:5173/api/fl?q=gnm&limit=1"
 
 Start every integration with [`/api/health`](#apihealth): it tells you which
 indexes this deployment loaded and what it can therefore do.
+
+**Or use the published image.** It is code only, so the data still has to be
+fetched once and mounted:
+
+```bash
+npm run fetch-data -- --core-only
+docker run -p 8080:8080 -v "$PWD/data:/data:ro" ghcr.io/gurmukhi-repo/gurbani-search-api
+```
 
 ## What it answers
 
@@ -113,8 +121,14 @@ container health check. `sources` lists loaded indexes;
 `indexes[name].freeText` says whether `/api/text` will work; `translations` says
 which `tr` views exist.
 
-Full reference: [docs/api.md](docs/api.md). Using this from an LLM:
-[skills/gurbani-search/SKILL.md](skills/gurbani-search/SKILL.md).
+Full reference: [docs/api.md](docs/api.md) · machine-readable: [openapi.yaml](openapi.yaml) ·
+from an LLM: [skills/gurbani-search/SKILL.md](skills/gurbani-search/SKILL.md).
+
+The running version is in every response as `X-API-Version` and in `/api/health`
+as `api_version`. Within a major version, fields are added and never removed or
+repurposed. There is deliberately no `/v1/` path prefix: one that silently maps
+to whatever is current is worse than none, because a client believes it is
+pinned and is not.
 
 ## Configuration
 
@@ -134,6 +148,9 @@ Environment variables; there is no config file.
 | `RATE_LIMIT_PER_MINUTE` | unset | requests per client per minute. Unset or `0` → no limiting |
 | `RATE_LIMIT_TEXT_PER_MINUTE` | = the above | a tighter ceiling for `/api/text`, the one endpoint that costs real CPU |
 | `TRUST_PROXY` | `0` | how many reverse proxies sit in front. `0` ignores `X-Forwarded-For` |
+| `LOG_REQUESTS` | unset | `json` or `text` — an access log. Unset → nothing |
+| `LOG_QUERIES` | unset | `1` includes the search terms in that log. Read the note below first |
+| `CLUSTER_WORKERS` | `1` | `N` or `auto` for multiple processes. **Memory multiplies by N** |
 | `NODE_ENV` | | `production` hides error detail from responses |
 
 `npm run fetch-data` writes into `./data`, so point `ARTIFACTS_DIR` at
@@ -241,12 +258,57 @@ does **not** stop a determined attacker, who will simply use more addresses. For
 that you want a real WAF in front. It is also per-process and in-memory, so two
 instances keep two counts.
 
+## Logging
+
+Off by default. `LOG_REQUESTS=json` gives one object per line for an aggregator;
+`LOG_REQUESTS=text` gives a readable line. Nothing is logged when it is unset —
+no clock read, no wrapped method, no listener.
+
+```json
+{"t":"2026-09-14T12:34:14.458Z","method":"GET","path":"/api/text","query":"?k=2","status":200,"ms":25,"bytes":880,"client":"127.0.0.1"}
+```
+
+**The search terms are left out by default.** `q` is what a person asked Gurbani
+about — grief, illness, a decision they are struggling with — and a log line
+pairing that with an address and a timestamp is a record of a private religious
+enquiry. It is rarely needed to operate the service, so it is opt-in:
+`LOG_QUERIES=1`, which also prints a warning at startup. Every other parameter is
+kept, so a line still tells you which index and how many results.
+
+The `Authorization` header is never logged in any mode. Client addresses are, in
+both — an access log that cannot answer "who is hammering this" is not worth
+having. If that is not acceptable where you deploy, leave this off and let your
+proxy log under its own policy.
+
+## Running more than one process
+
+```bash
+CLUSTER_WORKERS=auto npm start     # or a number
+```
+
+Off by default, and the default is the right choice for most deployments.
+
+**What it buys.** A free-text query is an ONNX forward pass. Measured under a
+32-query flood, a first-letter lookup that normally takes 1 ms was occasionally
+stalled to **632 ms** behind one. More workers means a cheap request can be
+picked up by a process that is not busy.
+
+**What it costs, and it is not small.** Every worker loads its own vectors and
+its own ONNX session. Nothing is shared, so memory multiplies almost exactly by
+N: ~114 MB with one worker, ~340 MB with three. **Check what your host gives you
+before raising this** — one worker is what fits a 256 MB tier.
+
+Rate limiting is per process, so N workers means a client gets up to N times the
+configured limit. Divide `RATE_LIMIT_PER_MINUTE` by the worker count, or limit in
+a proxy that sees every request. The startup log says both of these out loud.
+
 ## Known gaps
 
 Stated up front rather than discovered:
 
 - **No authentication beyond a shared password.** `APP_PASSWORD` is all there
   is; there are no per-user accounts or API keys.
+- **No client libraries.** The OpenAPI document will generate you one.
 - **No public instance.** You host it yourself; there is nothing to point a
   client at until you do.
 - **No write path of any kind.** This is a read-only service over a fixed corpus.

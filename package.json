@@ -1,6 +1,6 @@
 {
   "name": "gurbani-search-api",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "HTTP search API over Sri Guru Granth Sahib: meaning search, first-letter search, shabad reading and neighbours, with no network dependency at runtime",
   "license": "MIT",
   "private": true,

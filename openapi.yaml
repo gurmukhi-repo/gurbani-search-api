@@ -1,0 +1,395 @@
+openapi: 3.1.0
+info:
+  title: Gurbani search API
+  version: 1.0.0
+  summary: Search Sri Guru Granth Sahib by meaning or first letters, read a shabad, find related shabads.
+  description: |
+    An HTTP API over Sri Guru Granth Sahib: 60,403 lines, 5,542 shabads, 1,430 angs.
+    It calls no AI service at runtime.
+
+    **Start with `/api/health`.** A deployment loads whichever indexes it was given
+    and may have no translations at all; a client that assumes five indexes and
+    `tr_en` will break on a perfectly normal one-index deployment.
+
+    **Compatibility.** Within a major version, fields are added and never removed or
+    repurposed. The running version is in every response as `X-API-Version` and in
+    `/api/health` as `api_version`. There is no `/v1/` path prefix: a prefix that
+    silently maps to whatever is current is worse than none, because a client
+    believes it is pinned and is not.
+
+    **Licensing.** The code is MIT. The scripture, translations and indexes are not —
+    see NOTICE.md in the repository before redistributing anything.
+  license:
+    name: MIT (code only; see NOTICE.md for the data)
+    identifier: MIT
+servers:
+  - url: http://localhost:5173
+    description: a local run
+  - url: '{scheme}://{host}'
+    description: your deployment
+    variables:
+      scheme: { default: https, enum: [http, https] }
+      host: { default: gurbani.example }
+
+security: []
+
+tags:
+  - name: search
+  - name: read
+  - name: neighbours
+  - name: meta
+
+paths:
+  /api/health:
+    get:
+      tags: [meta]
+      operationId: health
+      summary: What this deployment can do
+      description: |
+        Never requires credentials, so it works as a container health check, and it is
+        never counted against a rate limit.
+      security: []
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+  /api/text:
+    get:
+      tags: [search]
+      operationId: searchByMeaning
+      summary: Search by meaning, in English or Gurmukhi
+      description: |
+        Use `index=all`: several independent indexes vote and each result carries
+        `votes`, how many agreed. The `score` is then a fusion rank
+        (`score_kind: rrf`) whose absolute value means nothing — compare results to
+        each other, never to a threshold.
+
+        Needs a query model. A deployment without one answers 503 here and works
+        everywhere else.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string }, description: the query; empty returns no results rather than an error }
+        - { name: k, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 15 } }
+        - { name: level, in: query, schema: { type: string, enum: [lines, shabads], default: lines } }
+        - { $ref: '#/components/parameters/index' }
+        - { $ref: '#/components/parameters/tr' }
+      responses:
+        '200':
+          description: results, possibly empty
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TextResults' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: no query encoder, or no loaded index can read this script
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  /api/fl:
+    get:
+      tags: [search]
+      operationId: searchByFirstLetters
+      summary: Search by the first letter of each word
+      description: |
+        Exact, not fuzzy: no results means those letters do not occur in that order.
+        A lexical index — no model, no vectors.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string }, example: gnm, description: 'ASCII (gnm) or Gurmukhi (ਗਨਮ)' }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: mode, in: query, schema: { type: string, enum: [anywhere, start], default: anywhere } }
+        - { $ref: '#/components/parameters/tr' }
+      responses:
+        '200':
+          description: matches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  query: { type: string }
+                  mode: { type: string, enum: [anywhere, start] }
+                  total: { type: integer, description: how many lines matched in all, often more than `limit` }
+                  ms: { type: integer }
+                  results:
+                    type: array
+                    items:
+                      allOf:
+                        - { $ref: '#/components/schemas/Line' }
+                        - type: object
+                          properties:
+                            highlight: { type: array, items: { type: integer }, description: which words your letters matched }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/shabad:
+    get:
+      tags: [read]
+      operationId: getShabad
+      summary: Read a whole shabad
+      parameters:
+        - { name: id, in: query, required: true, schema: { type: integer, minimum: 0 } }
+        - { $ref: '#/components/parameters/tr' }
+        - { $ref: '#/components/parameters/index' }
+      responses:
+        '200':
+          description: the shabad, its lines, and the Darpan when translations are installed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Shabad' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: no shabad with that id
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/similar/line:
+    get:
+      tags: [neighbours]
+      operationId: similarLines
+      summary: Lines that say the same thing
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/k' }, { $ref: '#/components/parameters/index' }, { $ref: '#/components/parameters/tr' }]
+      responses:
+        '200': { $ref: '#/components/responses/Neighbours' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/NoIndex' }
+
+  /api/similar/shabad:
+    get:
+      tags: [neighbours]
+      operationId: similarShabads
+      summary: Shabads that say the same thing
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/k' }, { $ref: '#/components/parameters/index' }]
+      responses:
+        '200': { $ref: '#/components/responses/Neighbours' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/NoIndex' }
+
+  /api/similar/rahao:
+    get:
+      tags: [neighbours]
+      operationId: similarByRahao
+      summary: Shabads on the same theme, compared by refrain
+      description: |
+        Compares the rahao lines rather than whole shabads, so it finds shabads on the
+        same **theme** rather than with similar wording. The best of the three for
+        "what else teaches this".
+      parameters: [{ $ref: '#/components/parameters/id' }, { $ref: '#/components/parameters/k' }, { $ref: '#/components/parameters/index' }]
+      responses:
+        '200': { $ref: '#/components/responses/Neighbours' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/NoIndex' }
+
+  /api/keyboard:
+    get:
+      tags: [meta]
+      operationId: keyboard
+      summary: The Gurmukhi keyboard layout
+      description: Letter rows, matras, the physical-key mapping and the Roman scheme, so a client need not hardcode them.
+      responses:
+        '200':
+          description: the layout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows: { type: array, items: { type: array, items: { type: string } } }
+                  nukta: { type: array, items: { type: string } }
+                  matras: { type: array, items: { type: string } }
+                  keymap: { type: object, additionalProperties: { type: string } }
+                  roman: { type: array, items: { type: array, items: { type: string } } }
+                  romanKeymap: { type: object, additionalProperties: { type: string } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: Required on every route except `/api/health` when `APP_PASSWORD` is set. Absent by default.
+
+  parameters:
+    id:
+      name: id
+      in: query
+      required: true
+      schema: { type: integer, minimum: 0 }
+    k:
+      name: k
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+    index:
+      name: index
+      in: query
+      description: an index name from `/api/health`'s `sources`, or `all` to fuse them
+      schema: { type: string }
+      example: all
+    tr:
+      name: tr
+      in: query
+      description: |
+        Which translations to attach, comma-separated. Only lines in the response carry
+        them; there is no endpoint that returns the translation corpus.
+      schema: { type: string }
+      example: en,pa
+
+  responses:
+    BadRequest:
+      description: a missing or invalid parameter, an unknown index, or a query in a script the named index cannot read
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    RateLimited:
+      description: over the per-client limit; only when `RATE_LIMIT_PER_MINUTE` is set
+      headers:
+        Retry-After: { schema: { type: integer }, description: seconds }
+        X-RateLimit-Limit: { schema: { type: integer } }
+        X-RateLimit-Remaining: { schema: { type: integer } }
+        X-RateLimit-Reset: { schema: { type: integer }, description: seconds until the window rolls }
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NoIndex:
+      description: the named index did not load, or no index serves neighbours
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Neighbours:
+      description: |
+        Neighbours, nearest first. An empty `results` with a `note` is not an error: a
+        heading, or a line a translation skips, has no vector in that index.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              index: { type: string, description: the index used, or `all` }
+              indexes: { type: array, items: { type: string }, description: present when `index=all` }
+              score_kind: { type: string, enum: [rrf], description: present when `index=all` }
+              note: { type: string }
+              results:
+                type: array
+                items:
+                  oneOf:
+                    - { $ref: '#/components/schemas/Line' }
+                    - { $ref: '#/components/schemas/ShabadMeta' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code: { type: integer, description: matches the HTTP status }
+        reason: { type: string, description: a machine-readable tag, currently only `rate_limited` }
+        retry_after: { type: integer }
+
+    Line:
+      type: object
+      properties:
+        line_id: { type: integer, description: dense row order; stable within a data release }
+        shabad_id: { type: integer }
+        ang: { type: integer, minimum: 1, maximum: 1430 }
+        gurmukhi_uni: { type: string, description: scripture, reproduced exactly }
+        gurmukhi_ascii: { type: string }
+        translit_roman: { type: string }
+        first_letters_ascii: { type: string }
+        kind:
+          type: string
+          enum: [line, rahao, heading, invocation]
+          description: a `heading` or `invocation` is NOT a verse; never quote one as though the Guru said it
+        rahao_stanza: { type: boolean, description: this line belongs to the refrain's stanza }
+        score: { type: number }
+        votes: { type: integer, description: how many indexes agreed; present when `index=all` }
+        agreement: { type: [number, 'null'], description: how closely two translators agreed; below ~0.6 means readings differ }
+        tr_en: { type: string }
+        tr_pa: { type: string }
+        tr_pad: { type: string }
+        tr_fk: { type: string }
+
+    ShabadMeta:
+      type: object
+      properties:
+        shabad_id: { type: integer }
+        writer: { type: string }
+        raag: { type: string }
+        ang_start: { type: integer }
+        ang_end: { type: integer }
+        line_count: { type: integer }
+        rahao_count: { type: integer }
+        has_rahao: { type: integer }
+        score: { type: number }
+        votes: { type: integer }
+
+    Shabad:
+      type: object
+      properties:
+        shabad: { $ref: '#/components/schemas/ShabadMeta' }
+        lines: { type: array, items: { $ref: '#/components/schemas/Line' } }
+        darpan:
+          type: [object, 'null']
+          description: |
+            Prof. Sahib Singh's Guru Granth Darpan, when translations are installed. His
+            ਨੋਟ side notes are not included and are not available anywhere.
+          properties:
+            bhav: { type: string, description: the central point of the shabad }
+            stanzas:
+              type: array
+              items:
+                type: object
+                properties:
+                  pa: { type: string }
+                  covers: { type: integer }
+            topics:
+              type: array
+              items:
+                type: object
+                properties:
+                  topic: { type: string }
+                  pa: { type: string }
+                  en: { type: string }
+
+    TextResults:
+      type: object
+      properties:
+        index: { type: string }
+        indexes: { type: array, items: { type: string } }
+        score_kind: { type: string, enum: [rrf], description: present only when indexes were fused }
+        query: { type: string }
+        level: { type: string, enum: [lines, shabads] }
+        ms: { type: integer }
+        results:
+          type: array
+          items:
+            oneOf:
+              - { $ref: '#/components/schemas/Line' }
+              - { $ref: '#/components/schemas/ShabadMeta' }
+
+    Health:
+      type: object
+      properties:
+        ok: { type: boolean }
+        api_version: { type: string }
+        lines: { type: integer }
+        sources: { type: array, items: { type: string }, description: loaded indexes, in display order }
+        default_index: { type: string, description: resolved — if the configured default did not load, this is the one that took over }
+        indexes:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              loaded: { type: boolean }
+              freeText: { type: boolean, description: whether /api/text works for this index }
+              text_lang: { type: string, enum: [pa, en] }
+              query_scripts: { type: array, items: { type: string, enum: [gurmukhi, latin] } }
+              roles: { type: array, items: { type: string } }
+              label: { type: string }
+              order: { type: integer }
+        translations:
+          type: object
+          additionalProperties: { type: boolean }
+          description: which `tr` views exist; all absent is a normal deployment
+        cors: { type: object, properties: { enabled: { type: boolean } } }
+        logging: { type: object, properties: { enabled: { type: boolean } } }
+        rate_limit: { type: object, properties: { enabled: { type: boolean } } }
+        semantic: { type: boolean }
+        freeText: { type: boolean }

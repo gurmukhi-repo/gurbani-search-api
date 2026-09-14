@@ -6,6 +6,12 @@ Base URL is wherever you deployed it. Every response is JSON. Errors are
 Only `GET` and `HEAD` are accepted; anything else is **405**. If `APP_PASSWORD`
 is set, every route except `/api/health` requires HTTP Basic with any username.
 
+**Versioning.** Every response carries `X-API-Version`, and `/api/health` reports
+`api_version`. Within a major version, fields are added and never removed or
+repurposed. There is no `/v1/` path prefix on purpose -- one that maps to
+whatever is current is worse than none. A machine-readable description of
+everything below is in [openapi.yaml](../openapi.yaml).
+
 **Rate limiting.** Off unless `RATE_LIMIT_PER_MINUTE` is set. Over the limit
 is a 429 carrying `Retry-After`; `X-RateLimit-Limit`, `-Remaining` and `-Reset`
 ride on every response. `/api/health` is never counted. See `/api/health`'s
@@ -38,8 +44,10 @@ Never requires credentials, so it works as a container health check.
   "sources": ["pa-ssa"],
   "default_index": "pa-ssa",
   "translations": { "en": true, "pa": true, "pad": true, "fk": true },
+  "api_version": "1.0.0",
   "cors": { "enabled": false },
   "rate_limit": { "enabled": false },
+  "logging": { "enabled": false },
   "semantic": true,
   "freeText": true
 }

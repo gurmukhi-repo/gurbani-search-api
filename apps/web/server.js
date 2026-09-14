@@ -38,6 +38,15 @@ const PUBLIC_DIR = path.resolve(__dirname, 'public');
 // password (any username). Unset for local development.
 const APP_PASSWORD = process.env.APP_PASSWORD || '';
 const IS_PROD = process.env.NODE_ENV === 'production';
+// The API's version, from one source of truth, reported on every response and in
+// /api/health so a client can tell what it is talking to without guessing.
+//
+// There is deliberately no /api/v1/ path prefix. A prefix that silently maps to
+// "whatever is current" is worse than no prefix at all, because a client
+// believes it is pinned and is not. The compatibility promise is in docs/api.md:
+// within a major version, fields are added and never removed or repurposed. If
+// that ever has to break, a real /api/v2/ is what earns the prefix.
+const API_VERSION = require('./package.json').version;
 
 // Indexes are discovered, not listed: every directory under artifacts/ with a
 // manifest, the English one at the root. A manifest with `roles: []` is a lab
@@ -59,6 +68,12 @@ if (!fs.existsSync(DB_PATH)) {
     + 'build it with: node pipeline/node/src/05-build-shipping-db.js');
   process.exit(1);
 }
+// Optional multi-process mode, off by default. Placed AFTER the database check
+// so a misconfiguration fails once here rather than in every forked worker, and
+// before anything is loaded so the supervisor never holds an index or a model.
+// Returns true only in a supervisor, which has nothing else to do.
+if (require('./cluster.js').startCluster()) return;
+
 const db = core.openNodeAdapter(DB_PATH);
 
 /** name -> { art, encoder, meta } for every index that loaded; `known` also holds the eligible ones that did not. */
@@ -79,6 +94,10 @@ const cors = require('./cors.js').createCors();
 
 // Per-client request limits, off unless RATE_LIMIT_PER_MINUTE is set.
 const limits = require('./limits.js').createLimits();
+
+// Access logging, off unless LOG_REQUESTS is set. Search terms are omitted
+// unless LOG_QUERIES=1 -- see logging.js for why that is the default.
+const logger = require('./logging.js').createLogger();
 
 async function tryLoadIndex(name, dir) {
   try {
@@ -367,7 +386,9 @@ const routes = {
       translations: availableLangs(),
       // Reported because the alternative is a browser console message that does
       // not say whether the server was configured or the origin was refused.
+      api_version: API_VERSION,
       cors: cors.summary(),
+      logging: logger.summary(),
       rate_limit: limits.summary(),
       // legacy summary fields, for the default index
       semantic: Boolean(indexes[DEFAULT_INDEX]),
@@ -408,6 +429,10 @@ const routes = {
     const inRahao = core.rahaoStanzaFlags(lines);
     lines.forEach((l, i) => { l.rahao_stanza = inRahao[i]; });
     const meta = db.all('SELECT * FROM shabads WHERE shabad_id=?', [id])[0] || null;
+    // A shabad that does not exist is a 404, not a 200 carrying nulls: a client
+    // cannot tell "no such shabad" from "a shabad with no lines" otherwise, and
+    // the difference is a typo versus a corrupt database.
+    if (!meta && !lines.length) return { error: `no shabad with id ${id}`, code: 404 };
     // agreement comes from the index named (?index=), else the default one
     const agreeFrom = indexes[url.searchParams.get('index')] || indexes[DEFAULT_INDEX];
     return { shabad: meta, darpan: darpanContext(id),
@@ -516,6 +541,7 @@ const MIME = {
 };
 
 const SECURITY_HEADERS = {
+  'X-API-Version': API_VERSION,
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
@@ -523,6 +549,23 @@ const SECURITY_HEADERS = {
 };
 
 const server = http.createServer(async (req, res) => {
+  // Access logging, when it is on. Everything here is inside the `if` so a
+  // deployment that does not want logs pays nothing for them -- no clock read,
+  // no wrapped method, no listener.
+  if (logger.enabled) {
+    const started = Date.now();
+    // the same key the limiter uses, so the log and the limit agree on who this
+    // is rather than deriving it twice and disagreeing
+    req.client = limits.clientKey(req);
+    let bytes = 0;
+    const end = res.end.bind(res);
+    res.end = (chunk, ...rest) => {
+      if (chunk) bytes += Buffer.byteLength(chunk);
+      return end(chunk, ...rest);
+    };
+    res.on('finish', () => logger(req, res.statusCode, Date.now() - started, bytes));
+  }
+
   // A CORS preflight is an OPTIONS the method gate below would refuse, so it is
   // answered first. With CORS_ORIGINS unset this does nothing and OPTIONS falls
   // through to the same 405 it always got.
