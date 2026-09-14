@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gurbani search API</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+  pre { background: rgba(128,128,128,.12); padding: .8rem 1rem; border-radius: 6px; overflow-x: auto; }
+  a { color: inherit; }
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: .35rem .6rem .35rem 0; vertical-align: top; border-bottom: 1px solid rgba(128,128,128,.25); }
+  td:first-child { white-space: nowrap; font-family: ui-monospace, monospace; font-size: .88em; }
+  .muted { opacity: .7; }
+</style>
+
+<h1>Gurbani search API</h1>
+
+<p>This is an API, not a website. There is no reader interface here &mdash; every
+answer comes back as JSON.</p>
+
+<pre>curl "$(echo $PWD)/api/health"</pre>
+<p class="muted">Start with <a href="/api/health"><code>/api/health</code></a>: it
+reports which indexes this deployment loaded, whether free-text search is
+available, and which translations are installed.</p>
+
+<h2>Endpoints</h2>
+<table>
+  <tr><td>/api/text</td><td>search by meaning, English or Gurmukhi</td></tr>
+  <tr><td>/api/fl</td><td>search by first letters &mdash; <code>?q=gnm</code></td></tr>
+  <tr><td>/api/shabad</td><td>read a whole shabad with its translations</td></tr>
+  <tr><td>/api/similar/line</td><td>lines that say the same thing</td></tr>
+  <tr><td>/api/similar/shabad</td><td>shabads that say the same thing</td></tr>
+  <tr><td>/api/similar/rahao</td><td>shabads on the same theme, by refrain</td></tr>
+  <tr><td>/api/keyboard</td><td>the Gurmukhi keyboard layout</td></tr>
+  <tr><td>/api/health</td><td>what this deployment can do</td></tr>
+</table>
+
+<h2>The text</h2>
+<p>The Gurmukhi is scripture and is reproduced exactly. A translation is a named
+person's reading of it and is labelled with their name. Machine-translated text
+is marked <code>machine</code> and is never offered as a human translation. If
+you build a client, carry those labels through &mdash; the difference between
+what the Guru said, what a translator said and what a machine said is the point
+of keeping them apart.</p>
+
+<p class="muted">Code is MIT. The data is not &mdash; see NOTICE.md in the
+repository before redistributing it.</p>

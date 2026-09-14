@@ -1,0 +1,11 @@
+{
+  "name": "@gurbani/search-core",
+  "private": true,
+  "version": "0.0.0",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "description": "Portable offline Gurbani search: lexical first-letter + semantic vectors",
+  "dependencies": {
+    "anvaad-js": "^1.5.1"
+  }
+}

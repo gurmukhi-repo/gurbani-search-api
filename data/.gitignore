@@ -1,0 +1,11 @@
+# The data packs land here. They are ~125MB, they are not this repository's to
+# redistribute (see ../NOTICE.md), and they are reproducible with:
+#
+#   npm run fetch-data
+#
+# manifest.json IS tracked: its hashes are reviewed in a pull request and pinned
+# to the code that expects them, which is what makes a swapped release asset
+# fail loudly instead of quietly serving the wrong verses.
+*
+!.gitignore
+!manifest.json

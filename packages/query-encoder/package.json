@@ -1,0 +1,9 @@
+{
+  "name": "@gurbani/query-encoder",
+  "private": true,
+  "version": "0.0.0",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "description": "On-device query embedding (ONNX). Optional peer of search-core.",
+  "dependencies": { "onnxruntime-node": "^1.20.0" }
+}

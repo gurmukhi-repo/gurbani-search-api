@@ -1,0 +1,26 @@
+# Run the API with the data packs mounted read-only from the host.
+#
+#   npm ci && npm run fetch-data
+#   docker compose up
+#
+# The server holds no state, opens no outbound socket and writes nothing, so the
+# container can be entirely read-only.
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data:ro
+    environment:
+      # Which indexes to load. Fewer indexes, less memory: one index is ~149MB
+      # resident, the default pack set is more. Unset loads everything present.
+      # INDEXES: pa-ssa
+      # Set to require HTTP Basic auth on every route except /api/health.
+      # APP_PASSWORD: change-me
+      NODE_ENV: production
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 512m
+    restart: unless-stopped

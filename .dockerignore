@@ -1,0 +1,20 @@
+# Whitelist: everything is excluded unless re-included below. In particular
+# data/ must never enter the build context -- it is ~270MB and it is not this
+# repository's to redistribute.
+*
+
+!package.json
+!packages/search-core/package.json
+!packages/search-core/package-lock.json
+!packages/search-core/src
+!packages/query-encoder/package.json
+!packages/query-encoder/package-lock.json
+!packages/query-encoder/src
+!apps/web/server.js
+!apps/web/registry.js
+!apps/web/package.json
+!apps/web/accounts
+!apps/web/public
+
+# tests are not needed at runtime
+apps/web/test

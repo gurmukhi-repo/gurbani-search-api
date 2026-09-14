@@ -1,0 +1,7 @@
+# Every text file is LF, everywhere, always.
+#
+# This repository is edited on Windows, macOS and Linux, and its files are kept
+# byte-identical with the project they were extracted from so that a patch
+# applies in either direction. A line-ending conversion would break that
+# silently -- the diff looks empty and the patch still fails.
+* -text

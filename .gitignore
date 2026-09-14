@@ -1,0 +1,17 @@
+node_modules/
+
+# The data packs. Fetched with `npm run fetch-data`, never committed: they are
+# ~270MB, and they are not under this repository's licence. See NOTICE.md.
+data/*
+!data/.gitignore
+!data/manifest.json
+artifacts/
+vendor/
+*.sqlite
+*.sqlite-journal
+*.onnx
+*.part
+
+.env
+.env.*
+.DS_Store

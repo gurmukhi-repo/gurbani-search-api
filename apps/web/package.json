@@ -1,0 +1,17 @@
+{
+  "name": "@gurbani/web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Gurbani Khoj web application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@gurbani/search-core": "*"
+  },
+  "optionalDependencies": {
+    "@gurbani/query-encoder": "*"
+  }
+}

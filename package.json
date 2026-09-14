@@ -1,0 +1,24 @@
+{
+  "name": "gurbani-search-api",
+  "version": "0.1.0",
+  "description": "HTTP search API over Sri Guru Granth Sahib: meaning search, first-letter search, shabad reading and neighbours, with no network dependency at runtime",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "start": "node apps/web/server.js",
+    "test": "npm run test:core && npm run test:encoder && npm run test:web",
+    "test:core": "cd packages/search-core && node --max-old-space-size=4096 --test",
+    "test:encoder": "cd packages/query-encoder && node --test",
+    "test:web": "cd apps/web && node --test",
+    "fetch-data": "node scripts/fetch-data.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "smoke": "node scripts/smoke.mjs"
+  }
+}
