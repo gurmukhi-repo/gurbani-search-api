@@ -48,10 +48,14 @@ COPY apps/web apps/web
 COPY package.json package.json
 
 # .dockerignore is a whitelist, so a file it does not name vanishes silently and
-# fails at container start. Fail the build in seconds instead.
-RUN test -f apps/web/server.js && test -f apps/web/registry.js \
- && test -f apps/web/accounts/identity.js \
- && test -f packages/search-core/src/index-node.js
+# the container dies at start -- after a push -- with MODULE_NOT_FOUND. Rather
+# than assert a hardcoded list of filenames, which is the thing that goes stale,
+# start the server for real and require it to reach its own first check. With no
+# data in the image it exits saying so, and reaching that line proves every
+# module in the require graph resolved.
+RUN out="$(DB_PATH=/nonexistent node apps/web/server.js 2>&1 || true)"; \
+    echo "$out" | grep -q 'database not found' \
+      || { echo "server did not reach startup:"; echo "$out"; exit 1; }
 
 USER node
 EXPOSE 8080

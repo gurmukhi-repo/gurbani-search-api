@@ -24,3 +24,32 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run doctor
       - run: npm test
+
+  # Builds the image and starts it. The Dockerfile's own assertion already
+  # proves the require graph resolves, but this is the job that would have
+  # caught cors.js being absent from the .dockerignore whitelist: the image
+  # built cleanly and the container died at start. No data is needed -- the
+  # server is expected to exit saying the database is missing, and reaching
+  # that line is the whole point.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t gurbani-search-api:ci .
+      - name: the container reaches its own first check
+        run: |
+          out="$(docker run --rm gurbani-search-api:ci 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q 'database not found' \
+            || { echo "::error::container did not reach startup"; exit 1; }
+      - name: and answers once data is mounted
+        run: |
+          npm install --no-audit --no-fund
+          node scripts/fetch-data.mjs --core-only --quiet
+          docker run -d --name api -p 8080:8080 -v "$PWD/data:/data:ro" -e INDEXES=pa-ssa gurbani-search-api:ci
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8080/api/health >/dev/null && break
+            sleep 2
+          done
+          node scripts/smoke.mjs --base http://127.0.0.1:8080
+          docker rm -f api

@@ -10,11 +10,11 @@
 !packages/query-encoder/package.json
 !packages/query-encoder/package-lock.json
 !packages/query-encoder/src
-!apps/web/server.js
-!apps/web/registry.js
-!apps/web/package.json
-!apps/web/accounts
-!apps/web/public
+# The whole application directory, minus its tests. A per-file list meant every
+# new module had to be remembered here -- and cors.js was not, so the image built
+# fine and the container died at start with MODULE_NOT_FOUND. A directory cannot
+# be forgotten.
+!apps/web
 
 # tests are not needed at runtime
 apps/web/test

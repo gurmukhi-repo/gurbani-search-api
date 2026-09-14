@@ -144,7 +144,7 @@ where that is already the default.
 
 | Configuration | Resident | Data on disk |
 |---|---:|---:|
-| **One index** (`INDEXES=pa-ssa`, no translations) | **149 MB** | 87 MB |
+| **One index** (`INDEXES=pa-ssa`), in the Docker image | **114 MB** | 84 MB |
 | Everything | measure it — see [docs/deploying.md](docs/deploying.md) | 267 MB |
 
 Each further index costs about 18 MB of vectors; indexes sharing a model share
