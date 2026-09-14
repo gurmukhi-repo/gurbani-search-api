@@ -131,6 +131,9 @@ Environment variables; there is no config file.
 | `TRANSLATIONS_PATH` | `$ARTIFACTS_DIR/translations.sqlite` | absent → no `?tr=` |
 | `APP_PASSWORD` | unset | unset → open. Set → HTTP Basic on every route except `/api/health` |
 | `CORS_ORIGINS` | unset | unset → no CORS headers at all. `*` → any origin, no credentials. A comma list → only those origins, and they may send credentials |
+| `RATE_LIMIT_PER_MINUTE` | unset | requests per client per minute. Unset or `0` → no limiting |
+| `RATE_LIMIT_TEXT_PER_MINUTE` | = the above | a tighter ceiling for `/api/text`, the one endpoint that costs real CPU |
+| `TRUST_PROXY` | `0` | how many reverse proxies sit in front. `0` ignores `X-Forwarded-For` |
 | `NODE_ENV` | | `production` hides error detail from responses |
 
 `npm run fetch-data` writes into `./data`, so point `ARTIFACTS_DIR` at
@@ -207,13 +210,43 @@ without guessing:
 "cors": { "enabled": true, "origins": ["https://reader.example"], "credentials": true }
 ```
 
+## Rate limiting
+
+Off by default. When something else in front of you already does this — a CDN, a
+gateway, a reverse proxy — leave it off.
+
+```bash
+RATE_LIMIT_PER_MINUTE=120 RATE_LIMIT_TEXT_PER_MINUTE=20 TRUST_PROXY=1 npm start
+```
+
+Free-text search runs an ONNX forward pass, 25–70 ms of CPU, while a first-letter
+lookup is about 1 ms. One careless loop can saturate a shared vCPU, which is what
+`RATE_LIMIT_TEXT_PER_MINUTE` is for: a *sub-ceiling*, not a second allowance. A
+text request spends both budgets, and a request refused by either spends neither.
+
+Over the limit is a **429** with `Retry-After`; every response carries
+`X-RateLimit-Limit`, `-Remaining` and `-Reset`. **`/api/health` is never
+counted** — a limit that can take your deployment out of rotation is worse than
+no limit.
+
+**`TRUST_PROXY` matters, and the default is the safe one.** `X-Forwarded-For` is
+a list the *client* can start and each proxy appends to, so its leftmost entry is
+whatever the caller claimed. Trusting that — the common shortcut — lets anyone
+mint a fresh budget per request by varying a header. At `0` the header is ignored
+entirely and the socket address is used. Set it to the number of proxies actually
+in front of you, and the real client is read that many entries from the right.
+
+Be clear-eyed about what this buys: it stops one client hammering the box, and it
+does **not** stop a determined attacker, who will simply use more addresses. For
+that you want a real WAF in front. It is also per-process and in-memory, so two
+instances keep two counts.
+
 ## Known gaps
 
 Stated up front rather than discovered:
 
 - **No authentication beyond a shared password.** `APP_PASSWORD` is all there
   is; there are no per-user accounts or API keys.
-- **No rate limiting** on the search endpoints.
 - **No public instance.** You host it yourself; there is nothing to point a
   client at until you do.
 - **No write path of any kind.** This is a read-only service over a fixed corpus.

@@ -6,6 +6,11 @@ Base URL is wherever you deployed it. Every response is JSON. Errors are
 Only `GET` and `HEAD` are accepted; anything else is **405**. If `APP_PASSWORD`
 is set, every route except `/api/health` requires HTTP Basic with any username.
 
+**Rate limiting.** Off unless `RATE_LIMIT_PER_MINUTE` is set. Over the limit
+is a 429 carrying `Retry-After`; `X-RateLimit-Limit`, `-Remaining` and `-Reset`
+ride on every response. `/api/health` is never counted. See `/api/health`'s
+`rate_limit` block for what a deployment is running.
+
 **Cross-origin.** Off unless `CORS_ORIGINS` is set, in which case `OPTIONS`
 preflights are answered 204 and allowed responses carry
 `Access-Control-Allow-Origin` and `Vary: Origin`. A named origin may also send
@@ -34,6 +39,7 @@ Never requires credentials, so it works as a container health check.
   "default_index": "pa-ssa",
   "translations": { "en": true, "pa": true, "pad": true, "fk": true },
   "cors": { "enabled": false },
+  "rate_limit": { "enabled": false },
   "semantic": true,
   "freeText": true
 }

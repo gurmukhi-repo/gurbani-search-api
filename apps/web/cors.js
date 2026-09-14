@@ -79,6 +79,8 @@ function createCors(env = process.env, log = console) {
     return {
       'access-control-allow-origin': origin,
       ...(credentials ? { 'access-control-allow-credentials': 'true' } : {}),
+      // Without this a browser can see the 429 but not why or for how long.
+      'access-control-expose-headers': 'Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset',
       vary: 'Origin',
     };
   };

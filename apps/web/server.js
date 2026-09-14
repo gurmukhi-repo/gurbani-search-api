@@ -77,6 +77,9 @@ const identify = require('./accounts/identity.js').createIdentifier();
 // no header to any response and leaves OPTIONS a 405, exactly as before.
 const cors = require('./cors.js').createCors();
 
+// Per-client request limits, off unless RATE_LIMIT_PER_MINUTE is set.
+const limits = require('./limits.js').createLimits();
+
 async function tryLoadIndex(name, dir) {
   try {
     if (!fs.existsSync(path.join(dir, 'manifest.json'))) return null;
@@ -365,6 +368,7 @@ const routes = {
       // Reported because the alternative is a browser console message that does
       // not say whether the server was configured or the origin was refused.
       cors: cors.summary(),
+      rate_limit: limits.summary(),
       // legacy summary fields, for the default index
       semantic: Boolean(indexes[DEFAULT_INDEX]),
       freeText: Boolean(indexes[DEFAULT_INDEX] && indexes[DEFAULT_INDEX].encoder),
@@ -545,6 +549,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+
+  // Charged before the credential check, so a flood of unauthenticated requests
+  // is refused as cheaply as possible. /api/health is never counted.
+  const rate = limits.check(url.pathname, req);
+  if (rate && rate.code === 429) {
+    const { headers: rh, ...body } = rate;
+    res.writeHead(429, { ...H, ...rh, 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(body));
+    return;
+  }
+  if (rate && rate.headers) Object.assign(H, rate.headers);
 
   // /api/health stays open so host health checks do not require credentials.
   if (url.pathname !== '/api/health') {
