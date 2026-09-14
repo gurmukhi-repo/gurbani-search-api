@@ -41,16 +41,15 @@ asserts on them — they exist so that everything around the ranking can be test
 
 Roughly in order of how much difference they would make:
 
-1. **CORS** — the single most requested thing a public API gets, and it does not
-   exist here yet (`OPTIONS` is a 405). Wants to be opt-in via an env var.
-2. **An optional rate limiter**, off by default.
-3. **Client libraries** — Python, Go, a typed JS wrapper.
-4. **More `deploy/` recipes** for hosts that are not already covered.
-5. **Hybrid retrieval.** Dense search drifts on specific terminology; a BM25
+1. **An optional rate limiter**, off by default. There is none on the search
+   endpoints today.
+2. **Client libraries** — Python, Go, a typed JS wrapper.
+3. **More `deploy/` recipes** for hosts that are not already covered.
+4. **Hybrid retrieval.** Dense search drifts on specific terminology; a BM25
    component over `gurbani.sqlite` would help and the data is already there.
-6. **Another index** — a different script or language, built to
+5. **Another index** — a different script or language, built to
    [docs/index-format.md](docs/index-format.md).
-7. **Documentation**, including translating the README into Punjabi.
+6. **Documentation**, including translating the README into Punjabi.
 
 ## What will get a patch turned down
 

@@ -130,6 +130,7 @@ Environment variables; there is no config file.
 | `MODELS_DIR` | `vendor/models` | where an index's `model_dir` is resolved |
 | `TRANSLATIONS_PATH` | `$ARTIFACTS_DIR/translations.sqlite` | absent → no `?tr=` |
 | `APP_PASSWORD` | unset | unset → open. Set → HTTP Basic on every route except `/api/health` |
+| `CORS_ORIGINS` | unset | unset → no CORS headers at all. `*` → any origin, no credentials. A comma list → only those origins, and they may send credentials |
 | `NODE_ENV` | | `production` hides error detail from responses |
 
 `npm run fetch-data` writes into `./data`, so point `ARTIFACTS_DIR` at
@@ -174,14 +175,44 @@ several times cheaper.
 **Behind a password**: set `APP_PASSWORD`. Every route except `/api/health` then
 requires HTTP Basic with any username.
 
+## Calling it from a browser
+
+Cross-origin access is off by default. While it is off, no response carries a
+cross-origin header and `OPTIONS` is a 405 — identical to this code not existing.
+
+```bash
+# these origins only, and they may send credentials
+CORS_ORIGINS=https://reader.example,http://localhost:3000 npm start
+
+# anyone may read; credentials are never granted
+CORS_ORIGINS='*' npm start
+```
+
+Matching is exact, including scheme and port: `https://a.example` and
+`http://a.example` are different origins, as are `:443` and `:8443`.
+
+**`*` never grants credentials**, and cannot. The CORS specification forbids the
+combination, and allowing it would let any page on the internet read a
+deployment you had protected with `APP_PASSWORD`. If a browser client needs to
+sign in, name its origin rather than using `*`.
+
+An origin that is not on the list simply gets no allowance — the API still
+answers, and the *browser* is what blocks it. A preflight from such an origin is
+answered 403, so the network tab tells you which of the two problems you have.
+
+`/api/health` reports the configuration, so a blocked request can be diagnosed
+without guessing:
+
+```json
+"cors": { "enabled": true, "origins": ["https://reader.example"], "credentials": true }
+```
+
 ## Known gaps
 
 Stated up front rather than discovered:
 
-- **No CORS.** `OPTIONS` returns 405, so a browser on another origin cannot call
-  this yet. Put it behind a reverse proxy that adds the headers, or see
-  [CONTRIBUTING.md](CONTRIBUTING.md) — this is the most useful thing someone
-  could add.
+- **No authentication beyond a shared password.** `APP_PASSWORD` is all there
+  is; there are no per-user accounts or API keys.
 - **No rate limiting** on the search endpoints.
 - **No public instance.** You host it yourself; there is nothing to point a
   client at until you do.

@@ -6,6 +6,12 @@ Base URL is wherever you deployed it. Every response is JSON. Errors are
 Only `GET` and `HEAD` are accepted; anything else is **405**. If `APP_PASSWORD`
 is set, every route except `/api/health` requires HTTP Basic with any username.
 
+**Cross-origin.** Off unless `CORS_ORIGINS` is set, in which case `OPTIONS`
+preflights are answered 204 and allowed responses carry
+`Access-Control-Allow-Origin` and `Vary: Origin`. A named origin may also send
+credentials; `*` never may. See the README, and `/api/health`'s `cors` block for
+what a given deployment is running.
+
 **Start with `/api/health`.** It tells you which indexes this deployment loaded,
 which of them can do free-text search, and which translations exist. A
 deployment with one index and no translations is a perfectly normal deployment,
@@ -27,6 +33,7 @@ Never requires credentials, so it works as a container health check.
   "sources": ["pa-ssa"],
   "default_index": "pa-ssa",
   "translations": { "en": true, "pa": true, "pad": true, "fk": true },
+  "cors": { "enabled": false },
   "semantic": true,
   "freeText": true
 }

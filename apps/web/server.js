@@ -73,6 +73,10 @@ let tdb = null;          // translations.sqlite, when it is on disk
 // shape and the same path, so the credential gate below needs no change.
 const identify = require('./accounts/identity.js').createIdentifier();
 
+// Cross-origin access, off unless CORS_ORIGINS is set. With it unset this adds
+// no header to any response and leaves OPTIONS a 405, exactly as before.
+const cors = require('./cors.js').createCors();
+
 async function tryLoadIndex(name, dir) {
   try {
     if (!fs.existsSync(path.join(dir, 'manifest.json'))) return null;
@@ -358,6 +362,9 @@ const routes = {
       sources,
       default_index: indexes[DEFAULT_INDEX] ? DEFAULT_INDEX : (sources[0] || null),
       translations: availableLangs(),
+      // Reported because the alternative is a browser console message that does
+      // not say whether the server was configured or the origin was refused.
+      cors: cors.summary(),
       // legacy summary fields, for the default index
       semantic: Boolean(indexes[DEFAULT_INDEX]),
       freeText: Boolean(indexes[DEFAULT_INDEX] && indexes[DEFAULT_INDEX].encoder),
@@ -512,9 +519,17 @@ const SECURITY_HEADERS = {
 };
 
 const server = http.createServer(async (req, res) => {
+  // A CORS preflight is an OPTIONS the method gate below would refuse, so it is
+  // answered first. With CORS_ORIGINS unset this does nothing and OPTIONS falls
+  // through to the same 405 it always got.
+  if (cors.preflight(req, res, SECURITY_HEADERS)) return;
+  // Every response carries the cross-origin headers this request earned, which
+  // is nothing at all unless CORS_ORIGINS is set.
+  const H = { ...SECURITY_HEADERS, ...cors.headers(req) };
+
   // Method restriction: everything is GET, except a question may be POSTed
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.writeHead(405, { ...SECURITY_HEADERS, 'allow': 'GET, HEAD', 'content-type': 'text/plain; charset=utf-8' });
+    res.writeHead(405, { ...H, 'allow': 'GET, HEAD', 'content-type': 'text/plain; charset=utf-8' });
     res.end('method not allowed');
     return;
   }
@@ -525,7 +540,7 @@ const server = http.createServer(async (req, res) => {
     const host = req.headers.host || '127.0.0.1';
     url = new URL(req.url, `http://${host}`);
   } catch {
-    res.writeHead(400, { ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8' });
+    res.writeHead(400, { ...H, 'content-type': 'text/plain; charset=utf-8' });
     res.end('bad request');
     return;
   }
@@ -536,7 +551,7 @@ const server = http.createServer(async (req, res) => {
     const ident = await identify(req).catch(() => null);
     if (!ident) {
       res.writeHead(401, {
-        ...SECURITY_HEADERS,
+        ...H,
         // Basic makes a browser show its password box; Bearer must not, or the
         // owner gets a dialog that cannot possibly satisfy it.
         'www-authenticate': identify.challenge(),
@@ -559,7 +574,7 @@ const server = http.createServer(async (req, res) => {
       .then(body => {
         const code = body && body.code ? body.code : 200;
         res.writeHead(code, {
-          ...SECURITY_HEADERS,
+          ...H,
           'content-type': 'application/json; charset=utf-8',
         });
         res.end(JSON.stringify(body));
@@ -572,12 +587,12 @@ const server = http.createServer(async (req, res) => {
   try {
     decodedRel = decodeURIComponent(url.pathname);
   } catch {
-    res.writeHead(400, { ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8' });
+    res.writeHead(400, { ...H, 'content-type': 'text/plain; charset=utf-8' });
     res.end('bad request');
     return;
   }
   if (decodedRel.includes('\0')) {
-    res.writeHead(400, { ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8' });
+    res.writeHead(400, { ...H, 'content-type': 'text/plain; charset=utf-8' });
     res.end('bad request');
     return;
   }
@@ -586,19 +601,19 @@ const server = http.createServer(async (req, res) => {
 
   // Assert resolved path is within PUBLIC_DIR
   if (!file.startsWith(PUBLIC_DIR + path.sep) && file !== PUBLIC_DIR) {
-    res.writeHead(403, { ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8' });
+    res.writeHead(403, { ...H, 'content-type': 'text/plain; charset=utf-8' });
     res.end('forbidden');
     return;
   }
 
   fs.readFile(file, (err, data) => {
     if (err) {
-      res.writeHead(404, { ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8' });
+      res.writeHead(404, { ...H, 'content-type': 'text/plain; charset=utf-8' });
       res.end('not found');
       return;
     }
     res.writeHead(200, {
-      ...SECURITY_HEADERS,
+      ...H,
       'content-type': MIME[path.extname(file)] || 'application/octet-stream',
     });
     res.end(data);
